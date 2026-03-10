@@ -72,19 +72,29 @@ python <skill-path>/scripts/check_url_accessibility.py "<category>_extracted_去
 
 **Important**: This script requires the `requests` library. If not installed, run `pip install requests` first.
 
-Present the report to the user. The report lists all URLs that returned errors (HTTP 4xx/5xx), timed out, or failed to connect. Ask the user to review the list — some URLs may be temporarily down or behind authentication, so the user should confirm which ones to actually remove.
+### 4b: Let the user review the MD file directly
 
-Once the user confirms (they may remove some entries from the list or confirm all), run:
+After the script finishes, do NOT read the report content or present it in the conversation. Instead:
+
+1. Tell the user the **full file path** of the generated `_失效检查.md` report
+2. Explain that the report contains a table of all inaccessible URLs, and the user should **open and edit the MD file directly** — delete any rows for URLs they want to keep (e.g., temporarily down sites, sites behind auth)
+3. Tell the user: "编辑完成后，请回来告诉我'继续'，我会根据修改后的文件删除失效链接。"
+4. **Stop and wait.** Do NOT proceed until the user explicitly says to continue (e.g., "继续", "好了", "go", "continue", etc.)
+
+This approach is important because the MD file may contain many URLs, and editing it directly in a text editor is much more convenient than discussing each one in the conversation. The user can use find/replace, bulk delete, and review at their own pace.
+
+### 4c: Remove dead bookmarks based on the edited report
+
+Only after the user confirms they are done editing, run:
 
 ```bash
-# Step 4b: Remove confirmed dead bookmarks using the report
 python <skill-path>/scripts/remove_dead_bookmarks.py "<category>_extracted_去重.html" "<category>_extracted_去重_失效检查.md"
 # Output: <category>_extracted_去重_清理.html + <category>_extracted_去重_失效清理报告.md
 ```
 
-If the user wants to keep some URLs that were flagged as dead, edit the `_失效检查.md` report to remove those entries before running the removal script. Use the cleaned file (`_清理.html`) for all subsequent steps.
+The removal script reads the MD report as-is — it only removes URLs that still appear in the table. Since the user has already deleted any rows they want to keep, the script will do the right thing.
 
-If all URLs are accessible, skip Step 4b and continue using the `_去重.html` file.
+Use the cleaned file (`_清理.html`) for all subsequent steps. If the report shows all URLs are accessible (no table in the MD file), skip this step and continue using the `_去重.html` file.
 
 ## Step 5: Analyze Near-Duplicates
 
