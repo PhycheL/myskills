@@ -18,10 +18,10 @@ Categorize bookmarks by **purpose** ("what do I want to do with this?"), not by 
 
 ## Workflow Overview
 
-The full process has 6 steps. Always follow them in order. Steps 4 and 5 require multiple rounds of discussion — do not rush through them.
+The full process has 7 steps. Always follow them in order. Steps 5 and 6 require multiple rounds of discussion — do not rush through them.
 
 ```
-Backup → Extract → Deduplicate → Analyze Near-Duplicates → Discuss Categories → Clean Up
+Backup → Extract → Deduplicate → Check Dead Links → Analyze Near-Duplicates → Discuss Categories → Clean Up
 ```
 
 ## Step 1: Backup the Original File
@@ -60,7 +60,33 @@ python <skill-path>/scripts/remove_duplicate_bookmarks.py "<category>_extracted.
 
 Report the results to the user: how many bookmarks total, how many duplicates found, how many removed. Use the deduplicated file (`_去重.html`) for all subsequent steps.
 
-## Step 4: Analyze Near-Duplicates
+## Step 4: Check Dead Links
+
+Run the accessibility checker to verify all URLs are still reachable. This uses concurrent requests for speed:
+
+```bash
+# Step 4a: Check all URLs for accessibility → produces a report
+python <skill-path>/scripts/check_url_accessibility.py "<category>_extracted_去重.html"
+# Output: <category>_extracted_去重_失效检查.md
+```
+
+**Important**: This script requires the `requests` library. If not installed, run `pip install requests` first.
+
+Present the report to the user. The report lists all URLs that returned errors (HTTP 4xx/5xx), timed out, or failed to connect. Ask the user to review the list — some URLs may be temporarily down or behind authentication, so the user should confirm which ones to actually remove.
+
+Once the user confirms (they may remove some entries from the list or confirm all), run:
+
+```bash
+# Step 4b: Remove confirmed dead bookmarks using the report
+python <skill-path>/scripts/remove_dead_bookmarks.py "<category>_extracted_去重.html" "<category>_extracted_去重_失效检查.md"
+# Output: <category>_extracted_去重_清理.html + <category>_extracted_去重_失效清理报告.md
+```
+
+If the user wants to keep some URLs that were flagged as dead, edit the `_失效检查.md` report to remove those entries before running the removal script. Use the cleaned file (`_清理.html`) for all subsequent steps.
+
+If all URLs are accessible, skip Step 4b and continue using the `_去重.html` file.
+
+## Step 5: Analyze Near-Duplicates
 
 This step goes beyond exact URL matching. Read the deduplicated HTML file and analyze the bookmarks to find entries where:
 
@@ -83,7 +109,7 @@ Group 2:
 
 Ask the user which ones to merge or remove. Wait for their decision on each group before making changes.
 
-## Step 5: Collaborative Category Discussion
+## Step 6: Collaborative Category Discussion
 
 This is the most important step. Do NOT skip the discussion or auto-apply categories.
 
@@ -131,12 +157,13 @@ The output MUST be a valid Netscape Bookmark HTML file that Chrome can import. U
 
 Preserve all original attributes on `<A>` tags (ADD_DATE, ICON, etc.). Only change the folder structure.
 
-## Step 6: Clean Up
+## Step 7: Clean Up
 
 After generating the final output, delete all intermediate files:
 - The extracted HTML
 - The duplicate check report (`.md` files)
 - The deduplicated intermediate HTML
+- The dead link check report and cleaned HTML
 - Any other temporary files created during the process
 
 Only two files should remain:
