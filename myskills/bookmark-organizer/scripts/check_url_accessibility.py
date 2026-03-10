@@ -112,7 +112,7 @@ def build_markdown(input_file, total, accessible, inaccessible, skipped, results
         safe_title = title.replace('|', '\\|')
         safe_url = url.replace('|', '%7C')
         safe_err = (err or '未知错误').replace('|', '\\|')
-        lines.append(f'| {i} | {safe_title} | `{safe_url}` | {safe_err} |')
+        lines.append(f'| {i} | {safe_title} | {safe_url} | {safe_err} |')
 
     lines.append('')
     return '\n'.join(lines)
