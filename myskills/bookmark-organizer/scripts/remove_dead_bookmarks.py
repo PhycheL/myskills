@@ -27,12 +27,13 @@ def parse_report(report_content):
     """
     从失效检查报告中提取所有无法访问的 URL。
 
-    报告格式为 Markdown 表格，URL 在第三列（反引号包裹）。
+    报告格式为 Markdown 表格，URL 在第三列（不加反引号）。
+    支持两个表格（"确认无法访问"和"反爬拦截"）。
     """
     dead_urls = set()
-    # 匹配表格行中的 URL：| # | 标题 | `URL` | 原因 |
+    # 匹配表格行中的 URL：| # | 标题 | URL | 原因 |
     pattern = re.compile(
-        r'^\|\s*\d+\s*\|[^|]*\|\s*`([^`]+)`\s*\|',
+        r'^\|\s*\d+\s*\|[^|]*\|\s*(https?://\S+?)\s*\|',
         re.MULTILINE
     )
     for match in pattern.finditer(report_content):

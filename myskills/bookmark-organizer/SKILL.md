@@ -70,7 +70,23 @@ python <skill-path>/scripts/check_url_accessibility.py "<category>_extracted_去
 # Output: <category>_extracted_去重_失效检查.md
 ```
 
-**Important**: This script requires the `requests` library. If not installed, run `pip install requests` first.
+**Important**: This script requires the `requests` library and optionally `playwright` for browser-based detection:
+```bash
+pip install requests
+# 可选：安装 playwright 以启用浏览器检测（大幅减少误报）
+pip install playwright && python -m playwright install chromium
+```
+
+The script uses a two-pass detection strategy:
+1. **First pass**: `requests` concurrent checks (fast, but some sites block non-browser requests)
+2. **Second pass**: Playwright headed Chrome retries failed URLs (catches Cloudflare/WAF false positives)
+
+The report splits results into two tables: "确认无法访问的链接" (truly dead, recommend deletion) and "被反爬机制拦截的链接" (anti-crawl blocked, recommend manual check).
+
+Use `--skip-browser` to skip the Playwright pass (faster, but more false positives):
+```bash
+python <skill-path>/scripts/check_url_accessibility.py "<file>.html" --skip-browser
+```
 
 ### 4b: Let the user review the MD file directly
 
