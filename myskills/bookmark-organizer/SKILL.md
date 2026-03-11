@@ -12,13 +12,15 @@ description: >
 
 Organize Chrome-exported bookmark HTML files by extracting categories, removing duplicates, identifying near-duplicates, and re-categorizing bookmarks through collaborative discussion with the user.
 
-## Core Principle
+## Core Principle: Scenario-Driven Classification
 
-Categorize bookmarks by **purpose** ("what do I want to do with this?"), not by **topic** ("what is this about?"). The goal is to make bookmarks useful for the user's actual workflow, not to create a library catalog.
+Categorize bookmarks by **usage scenario** ("when would I open this?"), not by **topic** ("what is this about?") or even **purpose** ("what do I want to do with this?").
+
+The key question is: **"在什么情境下我会打开它？"** — a person is only in one state at a time, so scenarios are naturally mutually exclusive. This eliminates ambiguity and reduces classification discussion to 1-2 rounds.
 
 ## Workflow Overview
 
-The full process has 7 steps. Always follow them in order. Steps 5 and 6 require multiple rounds of discussion — do not rush through them.
+The full process has 7 steps. Always follow them in order.
 
 ```
 Backup → Extract → Deduplicate → Check Dead Links → Analyze Near-Duplicates → Discuss Categories → Clean Up
@@ -135,31 +137,62 @@ Group 2:
 
 Ask the user which ones to merge or remove. Wait for their decision on each group before making changes.
 
-## Step 6: Collaborative Category Discussion
+## Step 6: Scenario-Driven Category Discussion
 
 This is the most important step. Do NOT skip the discussion or auto-apply categories.
 
+### Core Principle: Scenario-Driven Classification
+
+Do NOT ask "what is this website?" — ask **"when would I open this?"**
+
+The key insight: a person is only in one state at any moment, so usage scenarios are naturally mutually exclusive. Stack Overflow is technically a "community" site, but you open it 90% of the time because you hit a bug — so it goes under "查阅参考", not "社区". This eliminates the "could go in either category" problem.
+
 ### How to approach the discussion
 
-1. **Analyze the bookmarks** — Read through all remaining bookmarks and understand what the user has collected. Look for patterns in what they've saved.
+#### Phase 1: Define 3-5 Usage Scenarios
 
-2. **Propose initial categories** — Suggest 5-8 categories framed as actions/purposes. Examples of good category names:
-   - "Learning & Study" (学习研究) — things I want to read and learn from
-   - "Tools to Use" (常用工具) — sites I actively use for work or projects
-   - "Reference & Lookup" (查阅参考) — things I go back to when I need specific info
-   - "To Try Later" (待尝试) — tools, frameworks, services I want to experiment with
-   - "Inspiration" (灵感收集) — designs, ideas, examples that spark creativity
+Analyze the bookmarks and propose 3-5 scenarios. Scenarios describe **a state the user is in**, not a type of website:
 
-   Bad category names (topic-based, avoid these):
-   - "JavaScript", "Machine Learning", "Design" — these describe *what* the content is, not *why* the user saved it
+Good scenarios (state-based, mutually exclusive):
+- "我在写代码，需要一个工具" → **开发工具** (editors, CLI tools, APIs I actively use)
+- "我遇到问题，需要查资料" → **查阅参考** (docs, Q&A, references I search when stuck)
+- "我想系统学点东西" → **学习提升** (courses, tutorials, books I study intentionally)
+- "我在刷信息流/逛社区" → **浏览发现** (news, feeds, communities I browse casually)
+- "我有个想法，需要找素材/灵感" → **灵感素材** (galleries, showcases, examples I browse for inspiration)
 
-3. **Present with reasoning** — For each proposed category, explain why you think it fits the user's bookmarks and give 2-3 example bookmarks that would go there.
+Bad scenarios (these are topic labels, NOT scenarios):
+- "JavaScript", "Machine Learning", "Design" — describes *what*, not *when*
+- "社区", "博客", "文档" — describes *site type*, not *user state*
 
-4. **Wait for feedback** — The user may want to rename categories, merge them, split them, add new ones, or rethink the whole approach. This is expected and encouraged. Do NOT proceed until the user explicitly says they're satisfied with the categories.
+Present each scenario with: the trigger state, 2-3 example bookmarks that clearly belong there, and the reasoning.
 
-5. **Show the mapping** — Once categories are agreed upon, show which bookmarks go into which category. Let the user review and adjust.
+#### Phase 2: User Confirms Scenario List
 
-6. **Apply changes** — Only after the user confirms the mapping, generate the final organized HTML file.
+Wait for the user to confirm the scenario list. Since scenarios are mutually exclusive by nature, this usually requires only 1 round of adjustment. Do NOT proceed until the user explicitly agrees.
+
+#### Phase 3: Assign Bookmarks Using the Judgment Question
+
+For each bookmark, apply this single judgment question:
+
+> **"我最常在哪个场景下点开它？"**
+
+Key rules:
+- One bookmark → one scenario, no exceptions
+- Go by actual usage frequency, not what the site "is"
+- When genuinely ambiguous, pick the scenario where the user would reach for it FIRST
+
+Show the full mapping grouped by scenario. Let the user review and adjust individual assignments.
+
+#### Phase 4: Split Large Scenarios
+
+If any scenario has more than 25 bookmarks, split it into sub-scenarios. Sub-scenarios should still follow the same principle — they describe a more specific state, not a topic:
+
+Good split: "学习提升" → "跟课程学" + "刷题练习"
+Bad split: "学习提升" → "Python学习" + "前端学习"
+
+#### Phase 5: Apply Changes
+
+Only after the user confirms the final mapping, generate the organized HTML file.
 
 ### Generating the Final Output
 
@@ -202,7 +235,7 @@ Tell the user the final file path and remind them they can import it into Chrome
 
 - Always work on copies, never modify the original file (that's what the backup is for)
 - If the user provides an HTML file that isn't in Chrome bookmark format, let them know and ask if they exported it correctly
-- The discussion in Step 5 may take multiple rounds — be patient and responsive to the user's preferences
+- The scenario confirmation in Step 6 typically takes 1-2 rounds since scenarios are naturally mutually exclusive — be efficient but still responsive to the user's preferences
 - If the bookmark count is very large (500+), consider suggesting to process in batches by sub-category
 - Keep all intermediate files in the same directory as the input HTML file
 - Communicate with the user in the same language they use (likely Chinese)
