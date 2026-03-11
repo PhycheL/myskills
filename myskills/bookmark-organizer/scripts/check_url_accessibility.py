@@ -6,11 +6,12 @@
   第二轮：对失败 URL 使用 Playwright headed Chrome 重试（真实浏览器）
 
 用法:
-    python check_url_accessibility.py <书签HTML文件> [输出md文件] [--timeout 秒数] [--workers 并发数] [--skip-browser]
+    python check_url_accessibility.py <书签HTML文件> [输出md文件] [--timeout 秒数] [--workers 并发数] [--browser-workers 浏览器并发数] [--skip-browser]
 
 示例:
     python check_url_accessibility.py "精致素材_去重.html"
     python check_url_accessibility.py "精致素材_去重.html" report.md --timeout 15 --workers 20
+    python check_url_accessibility.py "精致素材_去重.html" --browser-workers 3
     python check_url_accessibility.py "精致素材_去重.html" --skip-browser
 """
 
@@ -19,6 +20,7 @@ import os
 import re
 import html
 import time
+import asyncio
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
@@ -121,9 +123,9 @@ def check_url(url, title, timeout=10):
         return (url, title, False, None, str(e)[:100])
 
 
-def check_urls_with_browser(failed_results, timeout=30):
+def check_urls_with_browser(failed_results, timeout=30, browser_workers=5):
     """
-    第二轮：用 Playwright headed Chrome 逐个重试失败的 URL。
+    第二轮：用 Playwright Chrome 并发重试失败的 URL。
 
     返回:
         truly_dead: [(url, title, status, error), ...]  — 确认无法访问
@@ -131,94 +133,96 @@ def check_urls_with_browser(failed_results, timeout=30):
         recovered:   [(url, title), ...]                  — 实际可以访问
     """
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.async_api import async_playwright
     except ImportError:
         print("\n⚠ 未安装 playwright，跳过浏览器检测。")
         print("  安装方式: pip install playwright && python -m playwright install chromium")
-        # 全部归为 truly_dead
         truly_dead = [(url, title, status, err)
                       for url, title, _, status, err in failed_results]
         return truly_dead, [], []
 
+    total = len(failed_results)
+    print(f"\n第二轮：使用浏览器并发重试 {total} 个失败 URL（并发数 {browser_workers}）...")
+
     truly_dead = []
     anti_crawl = []
     recovered = []
+    counter = [0]  # 用列表以便在闭包中修改
 
-    total = len(failed_results)
-    print(f"\n第二轮：使用浏览器重试 {total} 个失败 URL...")
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            channel='chrome',
-            args=['--disable-blink-features=AutomationControlled'],
-        )
-        context = browser.new_context(
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                       'AppleWebKit/537.36 (KHTML, like Gecko) '
-                       'Chrome/120.0.0.0 Safari/537.36',
-            viewport={'width': 1280, 'height': 720},
-            locale='zh-CN',
-        )
-
-        for i, (url, title, _, status, err) in enumerate(failed_results, 1):
-            print(f"  [{i}/{total}] {url[:80]}...", end=" ", flush=True)
-            page = context.new_page()
+    async def check_single(context, url, title, orig_status, orig_err, semaphore):
+        async with semaphore:
+            counter[0] += 1
+            idx = counter[0]
+            print(f"  [{idx}/{total}] {url[:80]}...", end=" ", flush=True)
+            page = await context.new_page()
             try:
-                resp = page.goto(url, wait_until='domcontentloaded',
-                                 timeout=timeout * 1000)
-                page_title = (page.title() or "").lower()
+                resp = await page.goto(url, wait_until='domcontentloaded',
+                                       timeout=timeout * 1000)
+                page_title = (await page.title() or "").lower()
 
-                # 检查是否是 Cloudflare 等挑战页
                 is_challenge = any(kw in page_title for kw in CHALLENGE_TITLES)
 
                 if is_challenge:
-                    # 等待 JS Challenge 完成
                     print("挑战页，等待5s...", end=" ", flush=True)
-                    page.wait_for_timeout(5000)
-                    page_title = (page.title() or "").lower()
+                    await page.wait_for_timeout(5000)
+                    page_title = (await page.title() or "").lower()
                     is_challenge = any(kw in page_title
                                        for kw in CHALLENGE_TITLES)
 
                 resp_status = resp.status if resp else None
 
                 if not is_challenge and (resp_status is None or resp_status < 400):
-                    # 页面正常加载
                     print("✓ 可访问")
                     recovered.append((url, title))
                 elif is_challenge or resp_status in (403, 429):
-                    # 反爬拦截
                     reason = "反爬拦截（Cloudflare/WAF）" if is_challenge else f"HTTP {resp_status}（可能反爬）"
                     print(f"⚠ {reason}")
                     anti_crawl.append((url, title, resp_status, reason))
                 else:
-                    # 真正不可达
-                    reason = f"HTTP {resp_status}" if resp_status else (err or "页面加载失败")
+                    reason = f"HTTP {resp_status}" if resp_status else (orig_err or "页面加载失败")
                     print(f"✗ {reason}")
                     truly_dead.append((url, title, resp_status, reason))
 
             except Exception as e:
                 raw_err = str(e)
-                # 只取第一行，去掉 "Call log:" 等多行调试信息
                 first_line = raw_err.split('\n')[0].strip()
-                # 去掉 "Page.goto: " 前缀，只保留核心错误
                 err_msg = re.sub(r'^Page\.goto:\s*', '', first_line)
-                # 去掉 " at https://..." 后缀，避免表格过宽
                 err_msg = re.sub(r'\s+at\s+https?://\S+', '', err_msg)
                 err_msg = err_msg[:80]
                 if 'timeout' in err_msg.lower() or 'Timeout' in err_msg:
                     print(f"✗ 浏览器超时")
                     truly_dead.append((url, title, None, "浏览器访问超时"))
-                elif 'net::ERR_' in err_msg:
-                    print(f"✗ {err_msg}")
-                    truly_dead.append((url, title, None, err_msg))
                 else:
                     print(f"✗ {err_msg}")
                     truly_dead.append((url, title, None, err_msg))
             finally:
-                page.close()
+                await page.close()
 
-        browser.close()
+    async def run_all():
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                channel='chrome',
+                args=['--disable-blink-features=AutomationControlled'],
+            )
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                           'AppleWebKit/537.36 (KHTML, like Gecko) '
+                           'Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 720},
+                locale='zh-CN',
+            )
+
+            semaphore = asyncio.Semaphore(browser_workers)
+            tasks = [
+                check_single(context, url, title, status, err, semaphore)
+                for url, title, _, status, err in failed_results
+            ]
+            await asyncio.gather(*tasks)
+
+            await browser.close()
+
+    asyncio.run(run_all())
 
     return truly_dead, anti_crawl, recovered
 
@@ -280,6 +284,8 @@ def main():
                         help='每个 URL 的请求超时秒数（默认 10）')
     parser.add_argument('--workers', type=int, default=10,
                         help='并发检查线程数（默认 10）')
+    parser.add_argument('--browser-workers', type=int, default=5,
+                        help='浏览器并发检查数（默认 5）')
     parser.add_argument('--skip-browser', action='store_true',
                         help='跳过 Playwright 浏览器检测，仅用 requests')
     args = parser.parse_args()
@@ -341,7 +347,8 @@ def main():
     if failed_results and not args.skip_browser:
         browser_used = True
         truly_dead, anti_crawl, recovered = check_urls_with_browser(
-            failed_results, timeout=args.timeout * 3)
+            failed_results, timeout=args.timeout * 3,
+            browser_workers=args.browser_workers)
 
         # 如果 playwright 未安装导致全部归入 truly_dead 且没有 recovered
         if not recovered and not anti_crawl and truly_dead:
