@@ -17,6 +17,7 @@
 import sys
 import os
 import re
+import html
 import time
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -56,7 +57,7 @@ def extract_bookmarks(html_content):
     bookmarks = []
     for match in pattern.finditer(html_content):
         url = match.group(1)
-        title = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+        title = html.unescape(re.sub(r'<[^>]+>', '', match.group(2)).strip())
         bookmarks.append((url, title))
     return bookmarks
 
@@ -197,7 +198,14 @@ def check_urls_with_browser(failed_results, timeout=30):
                     truly_dead.append((url, title, resp_status, reason))
 
             except Exception as e:
-                err_msg = str(e)[:80]
+                raw_err = str(e)
+                # 只取第一行，去掉 "Call log:" 等多行调试信息
+                first_line = raw_err.split('\n')[0].strip()
+                # 去掉 "Page.goto: " 前缀，只保留核心错误
+                err_msg = re.sub(r'^Page\.goto:\s*', '', first_line)
+                # 去掉 " at https://..." 后缀，避免表格过宽
+                err_msg = re.sub(r'\s+at\s+https?://\S+', '', err_msg)
+                err_msg = err_msg[:80]
                 if 'timeout' in err_msg.lower() or 'Timeout' in err_msg:
                     print(f"✗ 浏览器超时")
                     truly_dead.append((url, title, None, "浏览器访问超时"))
@@ -242,7 +250,7 @@ def build_markdown(input_file, total, accessible, inaccessible, skipped,
         for i, (url, title, status, err) in enumerate(truly_dead, 1):
             safe_title = title.replace('|', '\\|')
             safe_url = url.replace('|', '%7C')
-            safe_err = (err or '未知错误').replace('|', '\\|')
+            safe_err = (err or '未知错误').replace('|', '\\|').replace('\n', ' ')
             lines.append(f'| {i} | {safe_title} | {safe_url} | {safe_err} |')
         lines.append('')
 
@@ -255,7 +263,7 @@ def build_markdown(input_file, total, accessible, inaccessible, skipped,
         for i, (url, title, status, err) in enumerate(anti_crawl, 1):
             safe_title = title.replace('|', '\\|')
             safe_url = url.replace('|', '%7C')
-            safe_err = (err or '未知错误').replace('|', '\\|')
+            safe_err = (err or '未知错误').replace('|', '\\|').replace('\n', ' ')
             lines.append(f'| {i} | {safe_title} | {safe_url} | {safe_err} |')
         lines.append('')
 

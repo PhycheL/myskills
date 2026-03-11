@@ -12,6 +12,7 @@
 import sys
 import os
 import re
+import html
 from urllib.parse import urlparse, urlunparse
 
 
@@ -38,7 +39,7 @@ def extract_bookmarks(html_content):
     bookmarks = []
     for match in pattern.finditer(html_content):
         url = match.group(1)
-        title = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+        title = html.unescape(re.sub(r'<[^>]+>', '', match.group(2)).strip())
         bookmarks.append((url, title))
     return bookmarks
 
