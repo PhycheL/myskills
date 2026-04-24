@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video to Markdown Archive"
+  short_description: "备份在线视频并转写为 Markdown 文档流程"
+  default_prompt: "Use $video-to-md-archive to back up this video and transcribe it into a Markdown document."

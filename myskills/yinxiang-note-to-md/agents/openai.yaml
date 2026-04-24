@@ -1,0 +1,4 @@
+interface:
+  display_name: "印象笔记转 Markdown"
+  short_description: "从印象笔记本地缓存批量导出笔记为 Markdown"
+  default_prompt: "Use $yinxiang-note-to-md to export notes from a Yinxiang notebook into Markdown files."
