@@ -99,6 +99,8 @@ Observed rules:
 - `IMAGE` items can still return short HTML from the content API and should be converted to Markdown with local image assets.
 - Some `WEB_PAGE` items return empty `cleanedHtml`; fall back to source URL and only include thumbnails that download as real image bytes.
 - Some thumbnails are bare collector hashes. Bare hashes can resolve to missing-file JSON responses, so the converter must not save non-image responses as Markdown image assets.
+- Some clipped pages include ad/tracking pixel `<img>` URLs such as Google ads, DoubleClick, BlueKai, Criteo, PubMatic, and similar user-sync endpoints. Skip these instead of failing the export or preserving them as Markdown images.
+- Some historical source images return HTTP 404/410. Skip unavailable remote images rather than blocking the whole batch.
 - If `VIDEO` or `VOICE` appears, use `video-to-md-archive` for that item: visit the source/media URL with browser/web access, create a durable local media backup when authorized, transcribe audio, and write the transcript/notes Markdown. Keep the Clipper item Markdown as the metadata/index entry and link to the media transcript output.
 
 Use stable output names such as:

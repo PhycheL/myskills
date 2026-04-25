@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import quote, parse_qs, urljoin, urlparse, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
@@ -116,9 +116,17 @@ def hash_hint_from_url(url: str) -> str:
     return hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
 
 
+def quote_url_for_request(url: str) -> str:
+    parts = urlsplit(url)
+    path = quote(parts.path, safe="/:%@+~#=,;!$&'()*[]")
+    query = quote(parts.query, safe="=&%/:?+~#,-.;!$'()*[]")
+    fragment = quote(parts.fragment, safe="=&%/:?+~#,-.;!$'()*[]")
+    return urlunsplit((parts.scheme, parts.netloc, path, query, fragment))
+
+
 def download_file(url: str, dest_without_ext: Path) -> tuple[Path, str]:
     request = Request(
-        url,
+        quote_url_for_request(url),
         headers={
             "User-Agent": "Mozilla/5.0 YinxiangClipperMarkdownExporter/0.1",
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -136,6 +144,50 @@ def download_file(url: str, dest_without_ext: Path) -> tuple[Path, str]:
     return dest, content_type or ""
 
 
+def should_skip_image_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    skip_hosts = {
+        "pagead2.googlesyndication.com",
+        "googleads.g.doubleclick.net",
+        "cm.g.doubleclick.net",
+        "tags.bluekai.com",
+        "id5-sync.com",
+        "j.mrpdata.net",
+        "pixel-sync.sitescout.com",
+        "apsoutheast-match.deepintent.com",
+        "openx2-match.dotomi.com",
+        "c.bing.com",
+        "bk-sync.metadsp.co.uk",
+        "pt.ispot.tv",
+        "dt.scanscout.com",
+        "bluekai-sync.dotomi.com",
+        "ad.atdmt.com",
+        "px.surveywall-api.survata.com",
+        "sync.ipredictive.com",
+        "cms.analytics.yahoo.com",
+        "s.amazon-adsystem.com",
+        "pm.w55c.net",
+        "usermatch.krxd.net",
+        "sync.sharethis.com",
+        "p.rfihub.com",
+        "gum.criteo.com",
+        "image6.pubmatic.com",
+        "sync.crwdcntrl.net",
+    }
+    if host in skip_hosts:
+        return True
+    if any(part in host for part in ("doubleclick.net", "googlesyndication.com")):
+        return True
+    return False
+
+
+def should_skip_failed_image_error(exc: Exception) -> bool:
+    message = str(exc)
+    if any(token in message for token in ("HTTP Error 404", "HTTP Error 410")):
+        return True
+    return False
+
+
 def localize_images(html_body: str, assets_dir: Path, rel_assets_dir: str, failures: list[dict]) -> str:
     cache: dict[str, str] = {}
     counter = 0
@@ -149,6 +201,8 @@ def localize_images(html_body: str, assets_dir: Path, rel_assets_dir: str, failu
         alt = attrs.get("alt") or attrs.get("title") or ""
         if not url:
             return ""
+        if should_skip_image_url(url):
+            return ""
 
         if url not in cache:
             counter += 1
@@ -157,8 +211,14 @@ def localize_images(html_body: str, assets_dir: Path, rel_assets_dir: str, failu
                 dest, _content_type = download_file(url, assets_dir / stem)
                 cache[url] = f"{rel_assets_dir}/{dest.name}"
             except Exception as exc:
-                failures.append({"url": url, "error": str(exc)})
-                cache[url] = url
+                if should_skip_image_url(url) or should_skip_failed_image_error(exc):
+                    cache[url] = ""
+                else:
+                    failures.append({"url": url, "error": str(exc)})
+                    cache[url] = url
+
+        if not cache[url]:
+            return ""
 
         src = html.escape(cache[url], quote=True)
         alt_value = html.escape(alt, quote=True)
