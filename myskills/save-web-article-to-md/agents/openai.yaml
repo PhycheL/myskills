@@ -1,0 +1,4 @@
+interface:
+  display_name: "Save Web Article To MD"
+  short_description: "Save public articles as local Markdown with assets."
+  default_prompt: "Save this article URL as a local Markdown file with images:"

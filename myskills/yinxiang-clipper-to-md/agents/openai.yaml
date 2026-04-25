@@ -1,0 +1,4 @@
+interface:
+  display_name: "印象剪藏转 Markdown"
+  short_description: "从印象剪藏网页批量导出为本地 Markdown"
+  default_prompt: "Use $yinxiang-clipper-to-md to export Yinxiang Clipper collector items from clipper.yinxiang.com into local Markdown files."
