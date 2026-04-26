@@ -132,7 +132,7 @@ def download_file(url: str, dest_without_ext: Path) -> tuple[Path, str]:
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         },
     )
-    with urlopen(request, timeout=30) as response:
+    with urlopen(request, timeout=8) as response:
         data = response.read()
         content_type = response.headers.get("Content-Type")
 
@@ -145,7 +145,10 @@ def download_file(url: str, dest_without_ext: Path) -> tuple[Path, str]:
 
 
 def should_skip_image_url(url: str) -> bool:
-    host = (urlparse(url).hostname or "").lower()
+    parsed = urlparse(url)
+    if parsed.scheme in {"http", "https"} and not parsed.hostname:
+        return True
+    host = (parsed.hostname or "").lower()
     skip_hosts = {
         "pagead2.googlesyndication.com",
         "googleads.g.doubleclick.net",
@@ -182,8 +185,12 @@ def should_skip_image_url(url: str) -> bool:
 
 
 def should_skip_failed_image_error(exc: Exception) -> bool:
-    message = str(exc)
-    if any(token in message for token in ("HTTP Error 404", "HTTP Error 410")):
+    message = str(exc).lower()
+    if any(token in message for token in ("http error 404", "http error 410")):
+        return True
+    if "timed out" in message or "timeout" in message:
+        return True
+    if "download did not return an image" in message and "application/json" in message:
         return True
     return False
 
@@ -407,8 +414,6 @@ def validate_output(output_dir: Path, md_names: list[str]) -> list[str]:
         text = path.read_text(encoding="utf-8")
         if not text.startswith("# "):
             problems.append(f"{md_name}: missing title")
-        if "item_type: WEB_PAGE" in text and "source_url:" not in text:
-            problems.append(f"{md_name}: missing source_url metadata")
         if "![]()" in text or re.search(r"!\[[^\]]*\]\(\s*\)", text):
             problems.append(f"{md_name}: empty image link")
         for rel in re.findall(r"!\[[^\]]*\]\((assets/[^)]+)\)", text):

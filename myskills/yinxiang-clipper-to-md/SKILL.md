@@ -99,8 +99,12 @@ Observed rules:
 - `IMAGE` items can still return short HTML from the content API and should be converted to Markdown with local image assets.
 - Some `WEB_PAGE` items return empty `cleanedHtml`; fall back to source URL and only include thumbnails that download as real image bytes.
 - Some thumbnails are bare collector hashes. Bare hashes can resolve to missing-file JSON responses, so the converter must not save non-image responses as Markdown image assets.
+- Some collector resource URLs with `hash-size` suffixes can also return JSON missing-file responses. Treat JSON responses from image downloads as unavailable images and skip them.
 - Some clipped pages include ad/tracking pixel `<img>` URLs such as Google ads, DoubleClick, BlueKai, Criteo, PubMatic, and similar user-sync endpoints. Skip these instead of failing the export or preserving them as Markdown images.
-- Some historical source images return HTTP 404/410. Skip unavailable remote images rather than blocking the whole batch.
+- Some historical source images return HTTP 404/410 or time out while reading. Skip unavailable or timed-out remote images rather than blocking the whole batch.
+- Use a short image request timeout for batch export so a few slow historical resources do not stall large batches.
+- Some clipped chat/history pages contain malformed image URLs such as bare `https:` without a host. Skip malformed no-host image URLs rather than blocking the whole batch.
+- Some `WEB_PAGE` chat/history records may have real `cleanedHtml` but no `source_url` (`websiteType=UNKNOWN`, `sourceType=OTHER`). Do not fail validation solely because `source_url` metadata is absent.
 - If `VIDEO` or `VOICE` appears, use `video-to-md-archive` for that item: visit the source/media URL with browser/web access, create a durable local media backup when authorized, transcribe audio, and write the transcript/notes Markdown. Keep the Clipper item Markdown as the metadata/index entry and link to the media transcript output.
 
 Use stable output names such as:
