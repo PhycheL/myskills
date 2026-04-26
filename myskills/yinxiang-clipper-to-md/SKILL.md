@@ -58,6 +58,7 @@ The converter:
 - uses `content.cleanedHtml` as the primary article body
 - converts HTML to GitHub-flavored Markdown with `pandoc`
 - downloads images into `assets/<item-stem>/`
+- downloads non-`WEB_PAGE` `resourceFiles` attachments into `assets/<item-stem>/` and appends a `资源附件` section
 - infers image extensions from file bytes instead of trusting response headers
 - writes one `.md` per item plus `README.md`
 
@@ -106,6 +107,7 @@ Observed rules:
 - Some clipped chat/history pages contain malformed image URLs such as bare `https:` without a host. Skip malformed no-host image URLs rather than blocking the whole batch.
 - Some `WEB_PAGE` chat/history records may have real `cleanedHtml` but no `source_url` (`websiteType=UNKNOWN`, `sourceType=OTHER`). Do not fail validation solely because `source_url` metadata is absent.
 - If `VIDEO` or `VOICE` appears, use `video-to-md-archive` for that item: visit the source/media URL with browser/web access, create a durable local media backup when authorized, transcribe audio, and write the transcript/notes Markdown. Keep the Clipper item Markdown as the metadata/index entry and link to the media transcript output.
+- For non-`WEB_PAGE` `resourceFiles`, build download URLs as `download-without-auth?hash=<resourceHash>-<resourceSize>`. Omitting the size can return a small JSON missing-file response instead of the real PDF/audio/video/image file. Do not separately append every `WEB_PAGE` resource file because those usually duplicate the article images already localized from `cleanedHtml`.
 
 Use stable output names such as:
 

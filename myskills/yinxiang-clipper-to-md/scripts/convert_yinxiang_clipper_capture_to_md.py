@@ -82,6 +82,12 @@ def content_type_to_ext(content_type: str | None, fallback: str = ".bin") -> str
         return ".jpg"
     if ctype == "image/svg+xml":
         return ".svg"
+    if ctype == "audio/amr":
+        return ".amr"
+    if ctype == "video/mp4":
+        return ".mp4"
+    if ctype == "application/pdf":
+        return ".pdf"
     ext = mimetypes.guess_extension(ctype or "")
     return ext or fallback
 
@@ -142,6 +148,97 @@ def download_file(url: str, dest_without_ext: Path) -> tuple[Path, str]:
     dest = dest_without_ext.with_suffix(ext)
     dest.write_bytes(data)
     return dest, content_type or ""
+
+
+def resource_download_url(resource: dict) -> str:
+    resource_hash = str(resource.get("resourceHash") or "").strip()
+    if not resource_hash:
+        return ""
+    resource_size = str(resource.get("resourceSize") or "").strip()
+    hash_value = f"{resource_hash}-{resource_size}" if resource_size else resource_hash
+    return f"{CLIPPER_BASE}/third/collector-res/v1/download-without-auth?hash={hash_value}"
+
+
+def safe_resource_filename(resource: dict, index: int, content_type: str | None = None) -> str:
+    raw_name = str(resource.get("fileName") or resource.get("resourceHash") or f"resource_{index:03d}")
+    name_path = Path(raw_name)
+    suffix = name_path.suffix.lower()
+    if not suffix or len(suffix) > 10:
+        suffix = str(resource.get("extension") or "").lower()
+        if suffix and not suffix.startswith("."):
+            suffix = "." + suffix
+    if content_type:
+        ctype_suffix = content_type_to_ext(content_type, fallback=suffix or ".bin")
+        if suffix in {"", ".bin", ".mp3"} and ctype_suffix != ".bin":
+            suffix = ctype_suffix
+    stem = sanitize_component(name_path.stem or raw_name, 72)
+    return f"resource_{index:03d}_{stem}{suffix or '.bin'}"
+
+
+def download_resource_file(resource: dict, assets_dir: Path, index: int) -> tuple[Path, str]:
+    url = resource_download_url(resource)
+    if not url:
+        raise RuntimeError("resource has no resourceHash")
+    request = Request(
+        quote_url_for_request(url),
+        headers={
+            "User-Agent": "Mozilla/5.0 YinxiangClipperMarkdownExporter/0.1",
+            "Accept": "*/*",
+        },
+    )
+    with urlopen(request, timeout=30) as response:
+        data = response.read()
+        content_type = response.headers.get("Content-Type")
+
+    ctype = (content_type or "").split(";", 1)[0].strip().lower()
+    if ctype == "application/json" or data.lstrip().startswith(b"{"):
+        raise RuntimeError(f"resource download did not return a file: content_type={content_type or ''}")
+
+    filename = safe_resource_filename(resource, index, content_type)
+    dest = assets_dir / filename
+    if dest.exists():
+        digest = hashlib.sha1((resource_download_url(resource) + filename).encode("utf-8")).hexdigest()[:8]
+        dest = assets_dir / f"{dest.stem}_{digest}{dest.suffix}"
+    dest.write_bytes(data)
+    return dest, content_type or ""
+
+
+def resource_attachment_markdown(item: dict, assets_dir: Path, rel_assets_dir: str, failures: list[dict]) -> str:
+    if item.get("itemType") == "WEB_PAGE":
+        return ""
+
+    resources = item.get("resourceFiles") or []
+    if not isinstance(resources, list) or not resources:
+        return ""
+
+    lines = ["## 资源附件", ""]
+    for index, resource in enumerate(resources, start=1):
+        if not isinstance(resource, dict):
+            continue
+        label = str(resource.get("fileName") or resource.get("resourceHash") or f"resource_{index:03d}")
+        mime = str(resource.get("mime") or "")
+        size = str(resource.get("resourceSize") or "")
+        try:
+            dest, content_type = download_resource_file(resource, assets_dir, index)
+            rel = f"{rel_assets_dir}/{dest.name}"
+            details = []
+            if mime or content_type:
+                details.append(f"mime: {mime or content_type}")
+            if size:
+                details.append(f"size: {size} bytes")
+            suffix = f" ({', '.join(details)})" if details else ""
+            lines.append(f"- [{label}]({rel}){suffix}")
+        except Exception as exc:
+            failures.append({"url": resource_download_url(resource), "error": str(exc)})
+            details = []
+            if mime:
+                details.append(f"mime: {mime}")
+            if size:
+                details.append(f"size: {size} bytes")
+            detail_text = f" ({', '.join(details)})" if details else ""
+            lines.append(f"- {label}{detail_text} - 未下载：{exc}")
+
+    return "\n".join(lines).strip()
 
 
 def should_skip_image_url(url: str) -> bool:
@@ -390,10 +487,12 @@ def write_markdown_for_entry(
     html_body = extract_cleaned_html(entry) or fallback_html_for_item(item)
     html_body = localize_images(html_body, assets_dir, rel_assets_dir, failures)
     if failures and not keep_remote_images:
-        failed = "\n".join(f"- {item['url']}: {item['error']}" for item in failures)
+        image_failures = [failure for failure in failures if failure.get("url")]
+        failed = "\n".join(f"- {item['url']}: {item['error']}" for item in image_failures)
         raise RuntimeError(f"image download failed for {title}\n{failed}")
 
     body_md = html_to_markdown(html_body) if html_body.strip() else ""
+    resource_md = resource_attachment_markdown(item, assets_dir, rel_assets_dir, failures)
     meta = metadata_for_item(item)
     meta_lines = [f"- {key}: {value}" for key, value in meta.items() if value]
     sections = [f"# {title}"]
@@ -401,6 +500,8 @@ def write_markdown_for_entry(
         sections.append("## 元数据\n\n" + "\n".join(meta_lines))
     if body_md:
         sections.append(body_md)
+    if resource_md:
+        sections.append(resource_md)
 
     md_name = stem + ".md"
     (output_dir / md_name).write_text("\n\n".join(sections).strip() + "\n", encoding="utf-8")
@@ -462,7 +563,7 @@ def convert_capture(input_path: Path, output_dir: Path, limit: int, keep_remote_
 
     problems = validate_output(output_dir, md_names)
     if all_failures:
-        readme_lines.extend(["", "## Image Download Failures", ""])
+        readme_lines.extend(["", "## Download Failures", ""])
         for failure in all_failures:
             readme_lines.append(f"- {failure['item']}: {failure['url']} ({failure['error']})")
     if problems:
