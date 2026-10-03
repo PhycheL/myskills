@@ -1,0 +1,26 @@
+{
+  "skill_name": "my-tech-writing",
+  "evals": [
+    {
+      "id": 1,
+      "name": "skill-vs-langgraph-voice-notes",
+      "prompt": "下面是我一段语音转写的笔记，帮我整理成一篇公众号文章，按我的风格来。笔记见 evals/files/01_skill_vs_langgraph.md",
+      "expected_output": "识别为语音转写的零散笔记，先出结构方案（中心论点大致是'企业 Agent 选型先上 Skill，不行再退回 LangGraph'），再写正文；保留作者三点理由（押注模型演进、LangGraph 把流程写死、最终要靠试），有一句单独成段的本质判断（AI native 和 workflow 的区别）；强判断后有'当然'式边界（可能退回 LangGraph）；不编造数字员工的具体名称、数据和案例，缺的用占位符；修正转写口语。",
+      "files": ["evals/files/01_skill_vs_langgraph.md"]
+    },
+    {
+      "id": 2,
+      "name": "agent-os-short-opinion",
+      "prompt": "我随手记了几句关于 agent os 的想法，帮我写成一篇公众号文章。笔记见 evals/files/02_agent_os.md",
+      "expected_output": "素材极少，应识别为破立式（纠正'agent os'这个说法），用'操作系统的本质是文件、虚拟内存、进程三大抽象'作本质判断；保留作者直率的判断但用'当然'补边界；沿作者论点补出推理（三大抽象在 agent 场景里分别意味着什么、现有做法为什么算不上），并在整理说明里逐条标出请作者确认；不编造具体产品名、公司名、个人经历，需要的事实用【需作者补充】占位；论证部分不能只剩占位符；结尾落到'agent 系统还在逐步完善'这一判断上。",
+      "files": ["evals/files/02_agent_os.md"]
+    },
+    {
+      "id": 3,
+      "name": "ai-workbench-draft-rewrite",
+      "prompt": "这是我写的公众号初稿，帮我按我的风格改一改，改完能直接发。初稿见 evals/files/03_ai_workbench_draft.md",
+      "expected_output": "识别为 6a 构想自己的产品；先抽出中心论点与论点链，指出结构上的问题（例如缺少单独成段的本质判断、缺少方案前提或风险、结尾的判断不够明确）再改；保留原稿的具体场景（吃饭、下班、我在当调度器）和链接；补上作者式的判断与'当然'边界，但不编造产品能力、数据和经历；标题朴素；附改动说明。",
+      "files": ["evals/files/03_ai_workbench_draft.md"]
+    }
+  ]
+}
