@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "mcp__chrome-devtools__select_page",
-      "mcp__chrome-devtools__take_snapshot"
-    ]
-  }
-}
