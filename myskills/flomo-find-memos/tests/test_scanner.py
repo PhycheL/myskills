@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import scan_edited as scanner
+import scan_memos as scanner
 import scan_state as state
 
 BASELINE = "2026-10-12T09:00:00+08:00"
@@ -22,6 +22,7 @@ CUTOFF = "2026-10-19T09:00:00+08:00"
 def memo(key="edited", **fields):
     value = {"id": key, "created_at": "2026-08-25T11:31:00+08:00",
              "updated_at": "2026-10-13T23:03:00+08:00", "content": "不应进入清单的正文",
+             "tags": ["流水账"],
              "files": [{"url": "不应进入清单的附件"}]}
     return dict(value, **fields)
 
@@ -74,6 +75,34 @@ class SelectionTests(unittest.TestCase):
         for bad in (memo(id=""), memo(updated_at=None), memo(created_at="2026-08-25")):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 self.select([bad])
+
+    def test_created_mode_uses_only_creation_time_and_half_open_window(self):
+        start, end = state.parse_dt("2026-10-12T00:00:00+08:00"), state.parse_dt("2026-10-13T00:00:00+08:00")
+        result = state.select_memos([
+            memo("at-start", created_at=start.isoformat(), updated_at=start.isoformat()),
+            memo("new-edited-later", created_at="2026-10-12T10:00:00+08:00", updated_at=CUTOFF),
+            memo("at-end", created_at=end.isoformat(), updated_at=end.isoformat()),
+            memo("old-edited", updated_at="2026-10-12T10:00:00+08:00"),
+        ], start, end, mode="created")
+        self.assertEqual({m["id"] for m in result}, {"at-start", "new-edited-later"})
+
+    def test_optional_tag_works_in_both_modes_without_changing_output_shape(self):
+        values = [memo("matching"), memo("other", tags=["其他"]), memo("untagged", tags=[])]
+        for mode, start in (("modified", BASELINE), ("created", "2026-08-25T00:00:00+08:00")):
+            with self.subTest(mode=mode):
+                all_memos = state.select_memos(values, state.parse_dt(start), state.parse_dt(CUTOFF), mode=mode)
+                tagged = state.select_memos(values, state.parse_dt(start), state.parse_dt(CUTOFF), mode=mode, tag="#流水账")
+                self.assertEqual(len(all_memos), 3)
+                self.assertEqual(tagged, [state.metadata(values[0])])
+
+    def test_tag_filter_applies_to_latest_duplicate_and_requires_tags(self):
+        values = [memo(tags=["流水账"]), memo(tags=["其他"], updated_at="2026-10-15T12:00:00+08:00")]
+        self.assertEqual(state.select_memos(values, state.parse_dt(BASELINE), state.parse_dt(CUTOFF), tag="流水账"), [])
+        value = memo()
+        value.pop("tags")
+        self.assertEqual(len(self.select([value])), 1)
+        with self.assertRaisesRegex(ValueError, "tags"):
+            state.select_memos([value], state.parse_dt(BASELINE), state.parse_dt(CUTOFF), tag="流水账")
 
     def test_response_formats_and_tool_errors(self):
         values = [memo()]
@@ -147,7 +176,9 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.config = self.root / "mcp.json"
         state.write_json(self.config, {"mcpServers": {"flomo": {
             "type": "http", "url": "https://fixture.invalid/mcp/secret", "headers": {"X-Test": "yes"}}}})
-        self.args = SimpleNamespace(output_dir=str(self.output), manifest=str(self.root / "selection.json"),
+        self.args = SimpleNamespace(state_dir=str(self.output), manifest=str(self.root / "selection.json"),
+                                    mode="modified", tag=None, date=None, start_at=None, end_at=None,
+                                    baseline=None, ids_file=None,
                                     mcp_config=str(self.config), server="flomo", concurrency=3, timeout=2, retries=0)
         self.values = [memo()]
         self.failures = 0
@@ -199,17 +230,19 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         await scanner.scan(self.args)
         data = state.load_manifest(self.args.manifest)
         self.assertEqual(data["memos"], [state.metadata(memo())])
-        self.assertEqual(data["baseline_at"], BASELINE)
+        self.assertEqual(data["query"]["start_at"], BASELINE)
         self.assertEqual(data["scan_started_at"], CUTOFF)
         self.assertEqual(self.calls, [("memo_search", {"start_date": "2000-01-01", "end_date": "2026-10-19", "limit": 50})])
         self.assertEqual(state.load_baseline(self.output), state.parse_dt(BASELINE))
         self.assertEqual({p.name for p in self.output.iterdir()}, {state.BASELINE_FILE})
+        self.assertEqual(json.loads(Path(data["ids_file"]).read_text()), ["edited"])
+        self.assertNotIn("output_dir", data)
 
     async def test_initial_scan_requires_explicit_finish(self):
         self.baseline.unlink()
         await scanner.scan(self.args)
         manifest = state.load_manifest(self.args.manifest)
-        self.assertIsNone(manifest["baseline_at"])
+        self.assertIsNone(manifest["query"]["start_at"])
         self.assertEqual(manifest["memos"], [])
         self.assertFalse(self.baseline.exists())
         self.assertFalse((self.output / state.RUNS_FILE).exists())
@@ -250,6 +283,47 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "清单路径已存在"):
             await scanner.scan(self.args)
         self.assertEqual(Path(self.args.manifest).read_text(), "old result")
+        self.assertEqual(self.calls, [])
+
+    async def test_created_query_only_requests_selected_day_and_keeps_modified_progress(self):
+        self.args.mode, self.args.date = "created", "2026-10-12"
+        self.values = [memo("new", created_at="2026-10-12T10:00:00+08:00"),
+                       memo("old", updated_at="2026-10-12T11:00:00+08:00")]
+        await scanner.scan(self.args)
+        data = state.load_manifest(self.args.manifest)
+        self.assertEqual([m["id"] for m in data["memos"]], ["new"])
+        self.assertEqual(self.calls, [("memo_search", {"start_date": "2026-10-12", "end_date": "2026-10-12", "limit": 50})])
+        self.assertEqual(state.load_baseline(self.output), state.parse_dt(BASELINE))
+        self.assertEqual({p.name for p in self.output.iterdir()}, {state.BASELINE_FILE})
+
+    async def test_standalone_tagged_query_needs_no_output_or_state_directory(self):
+        self.args.state_dir, self.args.baseline, self.args.tag = None, BASELINE, "#流水账"
+        self.values = [memo("matching"), memo("other", tags=["其他"])]
+        await scanner.scan(self.args)
+        data = state.load_manifest(self.args.manifest)
+        self.assertIsNone(data["state_dir"])
+        self.assertEqual(json.loads(Path(data["ids_file"]).read_text()), ["matching"])
+        self.assertEqual(data["query"]["tag"], "流水账")
+        self.assertEqual(data["memos"], [state.metadata(self.values[0])])
+        with self.assertRaisesRegex(ValueError, "独立检索"):
+            state.finish_scan(self.args.manifest)
+
+    async def test_tagged_daily_scan_checks_saturation_before_filtering(self):
+        self.args.mode, self.args.date, self.args.tag = "created", "2026-10-12", "流水账"
+        self.values = [memo(str(i), created_at="2026-10-12T10:00:00+08:00",
+                            tags=["流水账"] if i == 0 else ["其他"]) for i in range(50)]
+        with self.assertRaises(Exception) as caught:
+            await scanner.scan(self.args)
+        self.assertIn("单日仍满", scanner.failure_label(caught.exception))
+        self.assertFalse(Path(self.args.manifest).exists())
+        self.assertFalse(Path(self.args.manifest).with_suffix(".ids.json").exists())
+
+    async def test_unfinished_date_or_missing_created_window_fails_before_requests(self):
+        self.args.mode = "created"
+        for day in (None, "2026-10-19"):
+            self.args.date = day
+            with self.subTest(day=day), self.assertRaises(ValueError):
+                await scanner.scan(self.args)
         self.assertEqual(self.calls, [])
 
 

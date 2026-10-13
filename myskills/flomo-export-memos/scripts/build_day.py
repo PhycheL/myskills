@@ -6,7 +6,7 @@ Usage:
   build_day.py <day_memos.json> <OUTPUT_DIR> [DATE]
   build_day.py <day_memos.json> <OUTPUT_DIR> <DATE> --suffix=-选取 --report <report.json>
 
-The input may contain all memos for a tag or any explicitly chosen subset.
+The input contains the full memos for an explicitly chosen set of IDs.
 Optional filename, time-display and report settings are independent of how
 the memos were selected. This script never selects IDs or rewrites prose.
 
@@ -186,7 +186,7 @@ def load_report(path, out_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="flomo-tag-diaries 原始版导出与音频下载")
+    parser = argparse.ArgumentParser(description="flomo-export-memos 原始版导出与音频下载")
     parser.add_argument("source")
     parser.add_argument("output_dir")
     parser.add_argument("date", nargs="?")
@@ -217,6 +217,10 @@ def main():
     date.fromisoformat(day)
     validate_memos(memos, day, bool(args.report) or args.time_field == "updated_at")
     report = load_report(args.report, out_dir) if args.report else None
+    if report is not None:
+        report["complete"] = False
+        report.pop("memos", None)
+        atomic_write(args.report, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     os.makedirs(out_dir, exist_ok=True)
     used_names = set()
     audio_count = 0

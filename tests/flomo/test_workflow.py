@@ -1,4 +1,4 @@
-"""Offline handoff checks using the actual flomo-tag-diaries exporter CLI."""
+"""Repository-level integration checks; neither skill imports the other."""
 import csv
 import json
 import os
@@ -10,12 +10,15 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-SKILL = Path(__file__).resolve().parents[1]
+SKILL = Path(__file__).resolve().parents[2] / "myskills" / "flomo-find-memos"
 sys.path.insert(0, str(SKILL / "scripts"))
 import scan_state as state
+sys.path.insert(0, str(SKILL.parent / "flomo-export-memos" / "scripts"))
+from verify_export import verify_export
 
-EXPORT = SKILL.parent / "flomo-tag-diaries" / "scripts" / "build_day.py"
+EXPORT = SKILL.parent / "flomo-export-memos" / "scripts" / "build_day.py"
 FINISH = SKILL / "scripts" / "finish_scan.py"
+VERIFY = EXPORT.with_name("verify_export.py")
 BASELINE = "2026-10-12T09:00:00+08:00"
 CUTOFF = "2026-10-19T09:00:00+08:00"
 
@@ -30,20 +33,28 @@ class WorkflowTests(unittest.TestCase):
         self.baseline = self.output / state.BASELINE_FILE
         self.log = self.output / state.RUNS_FILE
         self.manifest = self.root / "selection.json"
+        self.ids = self.root / "selection.ids.json"
         self.report = self.root / "export.json"
         state.write_json(self.baseline, {"baseline_at": BASELINE})
 
     def memo(self, key="edited", **fields):
         return dict({"id": key, "created_at": "2026-08-25T11:31:00+08:00",
                      "updated_at": "2026-10-13T23:03:00+08:00",
-                     "content": "#流水账\n\n原文 memo\\_id 🙂\n第二行", "content_truncated": False}, **fields)
+                     "content": "#流水账\n\n原文 memo\\_id 🙂\n第二行", "content_truncated": False,
+                     "tags": ["流水账"]}, **fields)
 
-    def selection(self, memos, baseline=BASELINE, cutoff=CUTOFF, **fields):
-        value = {"schema_version": 1, "scan_id": "fixture", "scan_complete": True,
-                 "baseline_at": baseline, "scan_started_at": cutoff, "output_dir": str(self.output),
+    def selection(self, memos, baseline=BASELINE, cutoff=CUTOFF, mode="modified", tag=None, **fields):
+        value = {"schema_version": 2, "scan_id": "fixture", "scan_complete": True,
+                 "query": {"mode": mode, "tag": tag, "start_at": baseline, "end_at": cutoff},
+                 "scan_started_at": cutoff, "state_dir": str(self.output), "ids_file": str(self.ids),
                  "memos": state.select_memos(memos, state.parse_dt(baseline) if baseline else None,
-                                              state.parse_dt(cutoff))}
+                                              state.parse_dt(cutoff), mode=mode, tag=tag)}
         state.write_json(self.manifest, dict(value, **fields))
+        state.write_json(self.ids, [memo["id"] for memo in value["memos"]])
+
+    def complete(self):
+        verify_export(self.report, self.ids)
+        return state.finish_scan(self.manifest, self.report)
 
     def export(self, memos, success=True, options=None):
         source = self.root / "day.json"
@@ -63,7 +74,10 @@ class WorkflowTests(unittest.TestCase):
     def assert_unfinished(self, report=True):
         before = self.baseline.read_bytes() if self.baseline.exists() else None
         with self.assertRaises((ValueError, OSError)):
-            state.finish_scan(self.manifest, self.report if report else None)
+            if report:
+                self.complete()
+            else:
+                state.finish_scan(self.manifest)
         self.assertEqual(self.baseline.read_bytes() if self.baseline.exists() else None, before)
         self.assertFalse(self.log.exists())
 
@@ -79,6 +93,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("#流水账", text)
         self.assertEqual(full.read_text(), "已有完整日记")
         self.assertFalse(self.log.exists())
+        result = subprocess.run([sys.executable, "-B", str(VERIFY), str(self.report), "--ids", str(self.ids)],
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
         result = subprocess.run([sys.executable, "-B", str(FINISH), str(self.manifest), "--report", str(self.report)],
                                 capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -87,7 +104,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(set(json.loads(self.baseline.read_text())), {"baseline_at"})
         self.assertNotIn("content", self.report.read_text())
 
-    def test_default_tag_export_still_uses_creation_time_and_filename(self):
+    def test_default_export_still_uses_creation_time_and_filename(self):
         memo = self.memo()
         memo.pop("updated_at")
         self.export([memo], options=[])
@@ -114,7 +131,7 @@ class WorkflowTests(unittest.TestCase):
         self.export([first])
         self.assert_unfinished()
         self.export([second])
-        self.assertEqual(state.finish_scan(self.manifest, self.report), 2)
+        self.assertEqual(self.complete(), 2)
 
     def test_wrong_missing_or_duplicate_exported_ids_do_not_advance(self):
         self.selection([self.memo()])
@@ -137,7 +154,7 @@ class WorkflowTests(unittest.TestCase):
     def test_current_revision_inside_window_can_finish(self):
         self.selection([self.memo()])
         self.export([self.memo(updated_at="2026-10-15T12:00:00+08:00")])
-        self.assertEqual(state.finish_scan(self.manifest, self.report), 1)
+        self.assertEqual(self.complete(), 1)
 
     def test_missing_stale_or_damaged_formal_diary_blocks_finish(self):
         voice = self.memo(has_voice=True, content="嗯，今天我完成了修改。")
@@ -153,7 +170,7 @@ class WorkflowTests(unittest.TestCase):
         formal.write_text(raw.read_text().replace("### 2026-10-13 23:03", "### 错误时间"), encoding="utf-8")
         self.assert_unfinished()
         formal.write_text(raw.read_text().replace("嗯，", ""), encoding="utf-8")
-        self.assertEqual(state.finish_scan(self.manifest, self.report), 1)
+        self.assertEqual(self.complete(), 1)
 
     def test_empty_voice_keeps_audio_and_requires_formal(self):
         audio = self.root / "source.m4a"
@@ -168,7 +185,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("🎤 语音记录", raw.read_text())
         self.assertIn("audio/2026-08-25/2026-08-25_11-31.m4a", raw.read_text())
         (self.output / "2026-08-25-修改-书面语.md").write_text(raw.read_text(), encoding="utf-8")
-        self.assertEqual(state.finish_scan(self.manifest, self.report), 1)
+        self.assertEqual(self.complete(), 1)
 
     def test_truncated_or_duplicate_fulltext_is_rejected_before_export(self):
         cases = [[self.memo(content_truncated=True)], [self.memo(content=None)],
@@ -213,6 +230,73 @@ class WorkflowTests(unittest.TestCase):
 
         with mock.patch.object(state, "atomic_write", side_effect=fail_baseline):
             self.assert_unfinished(report=False)
+
+    def test_unverified_export_receipt_cannot_advance_progress(self):
+        self.selection([self.memo()])
+        self.export([self.memo()])
+        with self.assertRaisesRegex(ValueError, "尚未确认"):
+            state.finish_scan(self.manifest, self.report)
+        self.assertEqual(state.load_baseline(self.output), state.parse_dt(BASELINE))
+        self.assertFalse(self.log.exists())
+
+    def test_created_mode_uses_identical_exporter_and_separate_progress(self):
+        value = self.memo(created_at="2026-10-12T10:00:00+08:00", updated_at=CUTOFF)
+        self.selection([value], mode="created", baseline="2026-10-12T00:00:00+08:00",
+                       cutoff="2026-10-13T00:00:00+08:00", scan_started_at=CUTOFF)
+        self.export([value], options=["--report", str(self.report)])
+        self.assertEqual(self.complete(), 1)
+        self.assertTrue((self.output / "2026-10-12.md").exists())
+        self.assertEqual(state.load_baseline(self.output), state.parse_dt(BASELINE))
+        self.assertFalse(self.log.exists())
+        progress, log = state.scope_paths(self.output, "created")
+        self.assertEqual(json.loads(progress.read_text())["completed_windows"],
+                         [["2026-10-12T00:00:00+08:00", "2026-10-13T00:00:00+08:00"]])
+        with log.open(encoding="utf-8", newline="") as handle:
+            self.assertEqual(list(csv.reader(handle))[-1][1], "1")
+        before = log.read_bytes()
+        with self.assertRaisesRegex(ValueError, "窗口已完成"):
+            state.finish_scan(self.manifest, self.report)
+        self.assertEqual(log.read_bytes(), before)
+
+    def test_created_failure_keeps_window_unfinished_and_allows_backfill(self):
+        value = self.memo(created_at="2026-10-12T10:00:00+08:00", has_voice=True)
+        self.selection([value], mode="created", baseline="2026-10-12T00:00:00+08:00",
+                       cutoff="2026-10-13T00:00:00+08:00")
+        self.export([value], options=["--report", str(self.report)])
+        self.assert_unfinished()
+        progress, log = state.scope_paths(self.output, "created")
+        self.assertFalse(progress.exists())
+        self.assertFalse(log.exists())
+        (self.output / "2026-10-12-书面语.md").write_text((self.output / "2026-10-12.md").read_text(), encoding="utf-8")
+        self.assertEqual(self.complete(), 1)
+        self.selection([], mode="created", baseline="2026-10-10T00:00:00+08:00", cutoff="2026-10-11T00:00:00+08:00")
+        self.assertEqual(state.finish_scan(self.manifest), 0)
+        self.assertEqual(len(json.loads(progress.read_text())["completed_windows"]), 2)
+
+    def test_tagged_tasks_do_not_change_other_tag_or_global_baselines(self):
+        self.selection([], baseline=None, tag="流水账")
+        self.assertIsNone(state.finish_scan(self.manifest))
+        self.assertEqual(state.load_baseline(self.output, "#流水账"), state.parse_dt(CUTOFF))
+        self.assertEqual(state.load_baseline(self.output), state.parse_dt(BASELINE))
+        self.assertIsNone(state.load_baseline(self.output, "其他"))
+        self.assertFalse(self.log.exists())
+
+    def test_exporter_handles_ids_with_different_tags_in_one_date_file(self):
+        values = [self.memo("a", tags=["工作"]), self.memo("b", tags=["生活"]), self.memo("c", tags=[])]
+        state.write_json(self.ids, ["a", "b", "a", "c"])
+        self.export(values, options=["--report", str(self.report)])
+        self.assertEqual(verify_export(self.report, self.ids), 3)
+        self.assertEqual({p.name for p in self.output.glob("*.md")}, {"2026-08-25.md"})
+        self.assertEqual(json.loads(self.report.read_text())["complete"], True)
+
+    def test_reexport_invalidates_previously_verified_receipt(self):
+        self.selection([self.memo()])
+        self.export([self.memo()])
+        verify_export(self.report, self.ids)
+        self.export([self.memo(content="再次导出的内容")])
+        self.assertFalse(json.loads(self.report.read_text())["complete"])
+        with self.assertRaisesRegex(ValueError, "尚未确认"):
+            state.finish_scan(self.manifest, self.report)
 
 
 if __name__ == "__main__":

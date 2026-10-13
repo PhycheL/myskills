@@ -13,7 +13,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from scan_state import BEIJING_TZ, load_baseline, metadata, select_memos, write_json
+from scan_state import BEIJING_TZ, load_baseline, metadata, memo_tags, normalize_tag, parse_dt, select_memos, write_json
 
 PAGE_LIMIT = 50
 
@@ -58,7 +58,7 @@ def result_memos(result):
     raise ScanError("memo_search 响应中缺少 memos 数组；不能当成零条结果")
 
 
-async def enumerate_memos(search, start, end, concurrency=3):
+async def enumerate_memos(search, start, end, concurrency=3, keep_tags=False):
     """Bisect saturated date ranges; a saturated single day is incomplete."""
     semaphore = asyncio.Semaphore(concurrency)
 
@@ -68,6 +68,9 @@ async def enumerate_memos(search, start, end, concurrency=3):
         if not isinstance(page, list) or len(page) > PAGE_LIMIT:
             raise ScanError("memo_search 返回了无效的分页结果")
         items = [metadata(item) for item in page]
+        if keep_tags:
+            for item, original in zip(items, page):
+                item["tags"] = memo_tags(original)
         del page
         if len(items) == PAGE_LIMIT:
             if first == last:
@@ -97,18 +100,54 @@ def load_connection(config_path, server_name):
     return server["url"], headers
 
 
+def query_window(args, scanned):
+    tag = normalize_tag(args.tag)
+    if args.mode == "modified":
+        if args.date or args.start_at or args.end_at:
+            raise ScanError("修改模式使用 --baseline 或状态目录中的基线")
+        if args.baseline and args.state_dir:
+            raise ScanError("--baseline 用于独立检索；记录进度时使用 --state-dir 中的基线")
+        if not args.baseline and not args.state_dir:
+            raise ScanError("修改检索需要 --baseline 或 --state-dir")
+        start = parse_dt(args.baseline) if args.baseline else load_baseline(Path(args.state_dir).expanduser(), tag)
+        end = scanned
+    else:
+        if args.baseline:
+            raise ScanError("新增检索使用 --date 或 --start-at/--end-at")
+        if args.date:
+            if args.start_at or args.end_at:
+                raise ScanError("--date 与 --start-at/--end-at 选择一组")
+            start = parse_dt(date.fromisoformat(args.date).isoformat() + "T00:00:00+08:00")
+            end = start + timedelta(days=1)
+        elif args.start_at:
+            start = parse_dt(args.start_at)
+            end = parse_dt(args.end_at) if args.end_at else scanned
+        else:
+            raise ScanError("新增检索需要明确指定 --date 或 --start-at")
+    if end > scanned:
+        raise ScanError("目标时间窗口尚未结束，请指定已结束的日期或截止时间")
+    if start is not None and start >= end:
+        raise ScanError("查询截止时间必须晚于开始时间")
+    return {"mode": args.mode, "tag": tag,
+            "start_at": start.isoformat() if start else None, "end_at": end.isoformat()}
+
+
 async def scan(args):
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
-    manifest_path = Path(args.manifest).expanduser()
-    if manifest_path.exists():
+    manifest_path = Path(args.manifest).expanduser().resolve()
+    ids_path = Path(args.ids_file).expanduser().resolve() if args.ids_file else manifest_path.with_suffix(".ids.json")
+    if manifest_path == ids_path:
+        raise ScanError("ID 文件和运行清单必须使用不同路径")
+    if manifest_path.exists() or ids_path.exists():
         raise ScanError("清单路径已存在，请为本轮选择新路径，避免误用旧结果")
-    output = Path(args.output_dir).expanduser().resolve()
-    baseline = load_baseline(output)
     cutoff = datetime.now(BEIJING_TZ)
-    if baseline is not None and cutoff <= baseline:
-        raise ValueError("本轮扫描时间必须晚于现有基线")
+    query = query_window(args, cutoff)
+    start = parse_dt(query["start_at"]) if query["start_at"] else None
+    end = parse_dt(query["end_at"])
+    first = date(2000, 1, 1) if args.mode == "modified" else start.date()
+    last = cutoff.date() if args.mode == "modified" else (end - timedelta(microseconds=1)).date()
     url, headers = load_connection(args.mcp_config, args.server)
     async with streamablehttp_client(url, headers=headers, timeout=timedelta(seconds=args.timeout)) as (read, write, _):
         async with ClientSession(read, write) as session:
@@ -124,28 +163,40 @@ async def scan(args):
                             raise RuntimeError("memo_search 在有限重试后仍失败") from exc
                         await asyncio.sleep(min(2 ** attempt, 4))
 
-            index = await enumerate_memos(search, date(2000, 1, 1), cutoff.date(), args.concurrency)
+            index = await enumerate_memos(search, first, last, args.concurrency, keep_tags=query["tag"] is not None)
+    selected = select_memos(index, start, end, mode=args.mode, tag=query["tag"])
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "scan_id": uuid.uuid4().hex,
         "scan_complete": True,
-        "baseline_at": baseline.isoformat() if baseline is not None else None,
+        "query": query,
         "scan_started_at": cutoff.isoformat(),
-        "output_dir": str(output),
-        "memos": select_memos(index, baseline, cutoff),
+        "state_dir": str(Path(args.state_dir).expanduser().resolve()) if args.state_dir else None,
+        "ids_file": str(ids_path),
+        "memos": selected,
     }
-    write_json(manifest_path, manifest)
-    print(f"扫描完成：{len(manifest['memos'])} 条待导出笔记；清单：{manifest_path}")
-    if baseline is None:
-        print("首次扫描只建立基线，请运行 finish_scan.py 完成初始化。")
-    else:
-        print("请交给 flomo-tag-diaries 按 ID 清单导出；扫描阶段未推进基线。")
+    write_json(ids_path, [item["id"] for item in selected])
+    try:
+        write_json(manifest_path, manifest)
+    except Exception:
+        ids_path.unlink()
+        raise
+    print(f"检索完成：{len(selected)} 条；ID 清单：{ids_path}；运行清单：{manifest_path}")
+    if args.mode == "modified" and start is None:
+        print("首次完整检索，改动数未统计；尚未提交新基线。")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="并发扫描 flomo，仅生成需要导出的笔记 ID 清单")
-    parser.add_argument("output_dir", help="已有笔记输出目录，用于读取统一基线")
-    parser.add_argument("--manifest", required=True, help="待导出清单 JSON 的保存位置")
+    parser = argparse.ArgumentParser(description="按时间和可选标签检索 flomo，生成笔记 ID 清单")
+    parser.add_argument("--mode", choices=("modified", "created"), required=True, help="修改检索或新增检索")
+    parser.add_argument("--tag", help="可选标签，按当前 tags 精确匹配；省略时覆盖全部标签")
+    parser.add_argument("--baseline", help="独立修改检索的起点；与 --state-dir 二选一")
+    parser.add_argument("--state-dir", help="可选的任务状态目录；修改模式从中读取对应范围的基线")
+    parser.add_argument("--date", help="新增检索的北京时间自然日 YYYY-MM-DD，要求该日已结束")
+    parser.add_argument("--start-at", help="新增检索的开始时间，包含该时刻")
+    parser.add_argument("--end-at", help="新增检索的结束时间，不含该时刻；默认本次扫描开始时间")
+    parser.add_argument("--manifest", required=True, help="检索运行清单 JSON；用于收尾记账")
+    parser.add_argument("--ids-file", help="纯 ID 数组 JSON，默认 <manifest文件名>.ids.json")
     parser.add_argument("--mcp-config", default="~/.workbuddy/mcp.json", help="本地 MCP 配置文件")
     parser.add_argument("--server", default="flomo", help="配置中的 MCP 服务名")
     parser.add_argument("--concurrency", type=int, default=3, help="最大并发查询数，默认 3")
