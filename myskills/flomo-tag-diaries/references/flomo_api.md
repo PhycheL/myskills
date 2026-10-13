@@ -7,7 +7,7 @@ Search memos by tag and/or date range.
 Parameters:
 - `tag` (str): tag name **without** the leading `#`, e.g. `"流水账"`.
 - `limit` (int): max results per call. Use `50` (the practical max).
-- `start_date` / `end_date` (str, `YYYY-MM-DD`): inclusive date range filter.
+- `start_date` / `end_date` (str, `YYYY-MM-DD`): inclusive **creation-date** range filter, not an `updated_at` filter.
 - `from` (str): **NOT reliably supported** as a cursor — do not rely on it for pagination.
 
 Returns:
@@ -34,12 +34,12 @@ Returns:
 
 ## memo_batch_get
 
-Re-fetch full content for memos that were truncated.
+Fetch full content for explicitly selected IDs or memos that were truncated.
 
 Parameters:
-- `ids` (list[str]): memo slug ids, e.g. `["MjQ3NTIwOTg2", "MjQ2Nj..."]`. Batch several at once.
+- `ids` (list[str]): memo slug ids, e.g. `["MjQ3NTIwOTg2", "MjQ2Nj..."]`. Use batches of at most 10.
 
-Returns the same memo object shape with `content_truncated: false` and complete `content`.
+Returns the same memo object shape with `content_truncated: false` and complete `content`. Check that every requested ID was returned; retry `omitted_ids`, missing IDs, or still-truncated memos at most twice. An incomplete response is not a complete export.
 
 ## Pagination strategy (two phases, date-range bisection)
 
@@ -52,17 +52,18 @@ Goal: find every distinct calendar day that has a memo with the tag (content may
 2. If result count `< 50`: range is complete.
 3. If result count `== 50`: range is saturated — it may hide more than 50 memos. **Bisect** at the midpoint date and query each half (`[start, mid]`, `[mid+1, end]`) with `limit=50`.
 4. Recurse on any sub-range returning exactly 50.
+   A saturated single day cannot be split further with the documented date-only parameters. Stop and report incomplete coverage instead of claiming success.
 5. Collect the `created_at` date of every memo into a day set.
 
 ### Phase 2 — Fetch + write, one day at a time
 For each discovered day:
 
 1. `memo_search` with `start_date = end_date = <day>`, `limit=50`. This returns only that day's memos.
-2. If it returns exactly 50, bisect *within the day* (e.g. morning vs afternoon) and merge — a single busy day can still exceed 50.
+2. If it returns exactly 50, stop and report incomplete coverage; an hour-level filter is not documented.
 3. For any `content_truncated: true`, `memo_batch_get(ids)` to get full text.
 4. Write that day's `<DATE>.md` (see `scripts/build_day.py`).
 
-Because Phase 2 scopes the 50-limit to one day, bisection there is rare and cheap.
+For explicit ID lists, skip both search phases: fetch only those IDs and group the returned memos by their Beijing creation date.
 
 ## Content cleaning (VERBATIM — critical)
 
