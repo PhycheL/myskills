@@ -82,13 +82,14 @@ class IndependentSkillTests(unittest.TestCase):
         report = self.root / "export.json"
 
         self.run_script(skill, "build_day.py", source, output, "--report", report)
+        self.run_script(skill, "prepare_organized.py", report, "2026-10-12")
         raw = output / "2026-10-12.md"
-        formal = output / "2026-10-12-书面语.md"
-        formal.write_text(raw.read_text(encoding="utf-8").replace("嗯，", ""), encoding="utf-8")
+        organized = output / "2026-10-12-整理版.md"
+        organized.write_text(organized.read_text(encoding="utf-8").replace("嗯，", ""), encoding="utf-8")
         self.run_script(skill, "verify_export.py", report, "--ids", ids)
 
         self.assertIn("嗯，今天完成了记录。", raw.read_text(encoding="utf-8"))
-        self.assertIn("今天完成了记录。", formal.read_text(encoding="utf-8"))
+        self.assertIn("今天完成了记录。", organized.read_text(encoding="utf-8"))
         self.assertEqual((output / "audio/2026-10-12/2026-10-12_11-31.m4a").read_bytes(), audio.read_bytes())
         receipt = json.loads(report.read_text())
         self.assertIs(receipt["complete"], True)

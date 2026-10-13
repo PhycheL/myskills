@@ -50,6 +50,8 @@ import urllib.request
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 
+from memo_references import find_references, reference_inputs
+
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
 
@@ -272,6 +274,7 @@ def main():
     atomic_write(out_path, text)
     print(f"已写入：{out_path}（{len(entries)} 条，音频 {audio_count} 个）")
     if report is not None:
+        references = reference_inputs(find_references(text))
         report["days"][day] = {
             "memos": [{
                 "id": memo["id"],
@@ -281,7 +284,8 @@ def main():
             } for memo in memos],
             "raw_file": out_path.name,
             "raw_sha256": hashlib.sha256(out_path.read_bytes()).hexdigest(),
-            "formal_file": stem + "-书面语.md" if any(memo.get("has_voice") for memo in memos) else None,
+            "organized_file": stem + "-整理版.md" if references or any(memo.get("has_voice") for memo in memos) else None,
+            "references": references,
         }
         atomic_write(args.report, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
         print(f"已更新导出报告：{args.report}")

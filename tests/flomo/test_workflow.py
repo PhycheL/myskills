@@ -156,23 +156,23 @@ class WorkflowTests(unittest.TestCase):
         self.export([self.memo(updated_at="2026-10-15T12:00:00+08:00")])
         self.assertEqual(self.complete(), 1)
 
-    def test_missing_stale_or_damaged_formal_diary_blocks_finish(self):
+    def test_missing_stale_or_damaged_organized_diary_blocks_finish(self):
         voice = self.memo(has_voice=True, content="嗯，今天我完成了修改。")
         self.selection([voice])
         self.export([voice])
         self.assert_unfinished()
         raw = self.output / "2026-08-25-修改.md"
-        formal = self.output / "2026-08-25-修改-书面语.md"
-        formal.write_text(raw.read_text().replace("嗯，", ""), encoding="utf-8")
+        organized = self.output / "2026-08-25-修改-整理版.md"
+        organized.write_text(raw.read_text().replace("嗯，", ""), encoding="utf-8")
         old_time = raw.stat().st_mtime_ns - 1_000_000_000
-        os.utime(formal, ns=(old_time, old_time))
+        os.utime(organized, ns=(old_time, old_time))
         self.assert_unfinished()
-        formal.write_text(raw.read_text().replace("### 2026-10-13 23:03", "### 错误时间"), encoding="utf-8")
+        organized.write_text(raw.read_text().replace("### 2026-10-13 23:03", "### 错误时间"), encoding="utf-8")
         self.assert_unfinished()
-        formal.write_text(raw.read_text().replace("嗯，", ""), encoding="utf-8")
+        organized.write_text(raw.read_text().replace("嗯，", ""), encoding="utf-8")
         self.assertEqual(self.complete(), 1)
 
-    def test_empty_voice_keeps_audio_and_requires_formal(self):
+    def test_empty_voice_keeps_audio_and_requires_organized(self):
         audio = self.root / "source.m4a"
         audio.write_bytes(b"offline audio fixture")
         voice = self.memo(content="", has_voice=True, files=[{"type": "recorded", "url": audio.as_uri()}])
@@ -184,7 +184,7 @@ class WorkflowTests(unittest.TestCase):
         raw = self.output / "2026-08-25-修改.md"
         self.assertIn("🎤 语音记录", raw.read_text())
         self.assertIn("audio/2026-08-25/2026-08-25_11-31.m4a", raw.read_text())
-        (self.output / "2026-08-25-修改-书面语.md").write_text(raw.read_text(), encoding="utf-8")
+        (self.output / "2026-08-25-修改-整理版.md").write_text(raw.read_text(), encoding="utf-8")
         self.assertEqual(self.complete(), 1)
 
     def test_truncated_or_duplicate_fulltext_is_rejected_before_export(self):
@@ -267,7 +267,7 @@ class WorkflowTests(unittest.TestCase):
         progress, log = state.scope_paths(self.output, "created")
         self.assertFalse(progress.exists())
         self.assertFalse(log.exists())
-        (self.output / "2026-10-12-书面语.md").write_text((self.output / "2026-10-12.md").read_text(), encoding="utf-8")
+        (self.output / "2026-10-12-整理版.md").write_text((self.output / "2026-10-12.md").read_text(), encoding="utf-8")
         self.assertEqual(self.complete(), 1)
         self.selection([], mode="created", baseline="2026-10-10T00:00:00+08:00", cutoff="2026-10-11T00:00:00+08:00")
         self.assertEqual(state.finish_scan(self.manifest), 0)
