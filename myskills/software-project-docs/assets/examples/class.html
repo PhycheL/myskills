@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Model 数据关系图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>Model 数据关系图</h1>
+<div class="diagram"><pre class="mermaid">
+classDiagram
+  direction LR
+  class Protocol["协议发布版本"] {
+    报文名称
+    版本
+    字段定义
+  }
+  class Field["协议字段"] {
+    字段名称
+    字段类型
+    分辨率与单位
+    含义与描述
+  }
+  class Model["Model"] {
+    Model 名称
+    来源版本
+    是否过期
+  }
+  class Member["Model 成员"] {
+    成员名称
+    成员类型
+    注释
+    是否保留：是｜否
+  }
+  class MemberType["成员类型"] {
+    &lt;&lt;enumeration&gt;&gt;
+    基本类型
+    结构体
+    数组
+    字符串
+  }
+  class Rule["推导规则"] {
+    确定成员类型()
+    生成成员注释()
+  }
+  class Code["Model 代码"] {
+    Model 结构定义
+    与业务结构的双向赋值
+  }
+  Protocol "1" *-- "1..*" Field : 包含
+  Protocol "1" -- "0..1" Model : 来源
+  Model "1" *-- "1..*" Member : 包含
+  Member "1" *-- "0..*" Member : 子成员
+  Member "0..*" --> "1" Field : 来源字段
+  Member "0..*" --> "1" MemberType : 类型
+  Rule ..> Model : 推导
+  Model ..> Code : 生成
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

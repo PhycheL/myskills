@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>接口协议版本状态图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>接口协议版本状态图</h1>
+<div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  state "协议版本" as PV {
+    state "草稿" as Draft
+    state "最新发布版本" as Latest
+    state "历史版本" as History
+    [*] --> Draft : 新建、复制、导入<br/>创建修订草稿、回退
+    Draft : 编辑并自动保存
+    Draft --> Latest : 发布[无错误且有变化]
+    Latest --> History : 发布新版本
+    Draft --> [*] : 放弃<br/>草稿
+    Latest --> [*] : 删除[未被基线引用]
+    History --> [*] : 删除[未被基线引用]
+  }
+  state "发布基线" as BL {
+    state "编制中" as Editing
+    state "已发布" as Released
+    [*] --> Editing : 按范围创建
+    Editing : 调整所含版本
+    Editing --> Released : 发布基线<br/>[均为发布版本]
+  }
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

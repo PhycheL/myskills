@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>安全设计时序图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>安全设计时序图</h1>
+<div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant u as «actor»<br/>资料管理员
+  participant ui as 工作台
+  participant svc as 资料服务
+  u->>ui: 登录
+  ui->>svc: 身份鉴别
+  svc-->>ui: 鉴别结果
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

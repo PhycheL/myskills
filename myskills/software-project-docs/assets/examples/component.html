@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>总体架构图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>总体架构图</h1>
+<div class="diagram"><pre class="mermaid">
+flowchart TB
+  user(["«actor»<br/>用户"])
+  ui["«component»<br/>工作台（浏览器）<br/>浏览与导航、建模编辑、<br/>查看与分析、构建与导出、<br/>监控、系统设置"]
+  subgraph server["«device» 服务器"]
+    direction TB
+    access["«component»<br/>接口服务<br/>请求接入、身份鉴别、<br/>授权检查、统一应答"]
+    push["«component»<br/>消息推送"]
+    biz["«component»<br/>业务服务<br/>体系与接口建模、协议建模、<br/>版本管理、检查与转换、<br/>导入导出、构建交付、<br/>监控管理、用户与授权"]
+    data["«component»<br/>数据管理"]
+    db[("建模数据库")]
+    files[("文件存储<br/>构建产物、导出文件、录取文件")]
+  end
+  gen["«component»<br/>代码生成器"]
+  agent["«component»<br/>采集端"]
+  sut["«system»<br/>被监控软件"]
+  tools["«system»<br/>接口转换工具<br/>自动化测试工具"]
+  user --> ui
+  ui -- 请求与应答 --> access
+  push -- 实时消息 --> ui
+  access --> biz
+  biz --> push
+  biz --> data
+  data --> db
+  data --> files
+  biz -- 协议描述 --> gen
+  gen -- 源代码 --> biz
+  agent -- 任务与数据 --> access
+  agent -- 收包、回放、探测 --> sut
+  files -. 导出文件 .-> tools
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

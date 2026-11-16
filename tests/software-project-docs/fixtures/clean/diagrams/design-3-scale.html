@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>性能设计组件图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>性能设计组件图</h1>
+<div class="diagram"><pre class="mermaid">
+flowchart LR
+  svc["«component»<br/>资料服务"]
+  db[("资料库")]
+  svc --> db
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>接口宏定义建模用例图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>接口宏定义建模用例图</h1>
+<div class="diagram"><pre class="mermaid">
+usecase-beta
+  direction LR
+  actor user("用户")
+  actor designer("协议设计人员")
+  actor developer("软件开发人员")
+  actor convert_tool("接口转换工具") &lt;&lt;system&gt;&gt;
+  systemBoundary sys("接口协议管理工具")
+    uc_create("新建宏定义")
+    uc_update("编辑宏定义")
+    uc_delete("删除宏定义")
+    uc_preview("预览宏定义")
+    uc_refer("在字段参数中引用宏")
+    uc_check("校验宏名称与取值")
+    uc_usage("查询宏的引用位置")
+    uc_derived("查看接口派生常量")
+    uc_export("`导出宏定义<br/>供外部工具读取`")
+  end
+  designer --|> user
+  developer --|> user
+  user -- uc_preview
+  designer -- uc_create
+  designer -- uc_update
+  designer -- uc_delete
+  designer -- uc_refer
+  designer -- uc_export
+  uc_create ..>:include uc_check
+  uc_update ..>:include uc_check
+  uc_delete ..>:include uc_usage
+  uc_derived ..>:extend uc_preview
+  uc_export -- convert_tool
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

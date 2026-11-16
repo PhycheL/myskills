@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>系统上下文图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>系统上下文图</h1>
+<div class="diagram"><pre class="mermaid">
+usecase-beta
+  direction LR
+  actor admin("资料管理员")
+  actor reader("查阅人员")
+  systemBoundary sys("资料管理系统")
+    uc_input("录入资料")
+    uc_query("查询资料")
+  end
+  admin -- uc_input
+  reader -- uc_query
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

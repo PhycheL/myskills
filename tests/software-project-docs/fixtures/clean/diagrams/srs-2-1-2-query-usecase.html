@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>资料查询用例图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>资料查询用例图</h1>
+<div class="diagram"><pre class="mermaid">
+usecase-beta
+  direction LR
+  actor reader("查阅人员")
+  systemBoundary sys("资料管理系统")
+    uc_query("按条件查询")
+    uc_view("查看资料详情")
+  end
+  reader -- uc_query
+  reader -- uc_view
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

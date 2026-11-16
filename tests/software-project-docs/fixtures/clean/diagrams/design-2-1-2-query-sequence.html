@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>资料查询时序图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>资料查询时序图</h1>
+<div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant u as «actor»<br/>查阅人员
+  participant ui as 工作台
+  participant svc as 资料服务
+  u->>ui: 输入查询条件
+  ui->>svc: 查询资料
+  svc-->>ui: 查询结果
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

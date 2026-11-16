@@ -1,0 +1,35 @@
+/* 项目文档 UML 图源页面样式：标题只在浏览器中显示，截图只截 .diagram 中 Mermaid 输出的 svg 元素 */
+body {
+  margin: 0;
+  padding: 24px;
+  background: #ffffff;
+  color: #111111;
+  font-family: "PingFang SC", "Microsoft YaHei", "SimSun", sans-serif;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: normal;
+  color: #555555;
+}
+
+.diagram {
+  display: inline-block;
+  padding: 16px;
+  background: #ffffff;
+}
+
+/* 活动图的起止节点按 UML 记法填黑（起点实心圆，终点牛眼） */
+.mermaid circle.state-start {
+  fill: #111111 !important;
+  stroke: #111111 !important;
+}
+
+.mermaid .node .outer-path path[fill="#333333"] {
+  fill: #111111 !important;
+}
+
+.mermaid .node .outer-path path[fill="none"] {
+  fill: none !important;
+}

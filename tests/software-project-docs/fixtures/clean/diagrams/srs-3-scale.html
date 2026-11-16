@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>性能需求概念图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>性能需求概念图</h1>
+<div class="diagram"><pre class="mermaid">
+classDiagram
+  class Archive["资料库"] {
+    资料数量
+  }
+  class Record["资料"] {
+    标题
+  }
+  Archive "1" *-- "0..*" Record : 包含
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

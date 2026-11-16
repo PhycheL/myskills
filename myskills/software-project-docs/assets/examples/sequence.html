@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>协议草稿编辑与发布时序图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>协议草稿编辑与发布时序图</h1>
+<div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant u as «actor»<br/>协议设计人员
+  participant ui as 工作台
+  participant proto as 协议建模
+  participant ver as 版本管理
+  participant chk as 检查与转换
+  participant data as 数据管理
+  u->>ui: 编辑协议属性与字段
+  Note over ui: 在本地副本上修改，<br/>即时重算偏移、长度与问题
+  ui->>proto: 停止输入后自动保存草稿
+  Note over proto: 按引用重新展开报文头、<br/>自定义类型、字典与宏
+  proto->>data: 保存草稿
+  u->>ui: 发布
+  Note over ui: 先保存未提交的修改，<br/>预先检查并显示问题
+  alt 有错误
+    ui-->>u: 定位出错字段，不能发布
+  else 无错误
+    opt 有警告或已有发布版本
+      ui-->>u: 显示新版本号、警告与差异
+      u->>ui: 确认发布
+    end
+    ui->>ver: 提交发布
+    ver->>chk: 按同一规则复核
+    chk-->>ver: 检查结果
+    ver->>data: 原最新版本转为历史版本，<br/>草稿转为新的最新版本
+    ver-->>proto: 通知协议已发布新版本
+    ver-->>ui: 新版本
+    ui-->>u: 切换为只读
+  end
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

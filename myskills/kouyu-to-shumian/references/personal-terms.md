@@ -12,5 +12,6 @@
 | Multica | Motica | 讨论工具、竞品架构 |
 | daemon | demon | 远程电脑上的后台进程、客户端连接、runtime |
 | Claude Code | Cloud Code | AI 编程工具、远程开发、Harness |
+| Pi | 派 | 指 Pi Coding Agent；讨论 AI 编程工具、Agent 时按此纠正，“流派”“派发”等普通用法保留 |
 | CLI | COI | 接入命令行工具、Office CLI |
 | E2EE | E2E | 端到端加密、加密连接；仅在加密语境下按此纠正 |

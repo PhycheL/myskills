@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>运行环境部署图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>运行环境部署图</h1>
+<div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph browser["«execution environment» 浏览器"]
+    web_ui["«component»<br/>工作台界面"]
+  end
+  subgraph capture_host["«device» 采集主机"]
+    agent["«component»<br/>采集端"]
+  end
+  subgraph server_host["«device» 服务器（Linux x86_64）"]
+    page_svc["«component»<br/>页面服务"]
+    api_svc["«component»<br/>业务服务"]
+    ws_svc["«component»<br/>实时通信服务"]
+    codegen["«component»<br/>代码生成器"]
+    db[("建模数据库")]
+    files[("数据目录<br/>构建产物、日志")]
+  end
+  subgraph target_host["«device» 被监控软件所在主机"]
+    target_sw["«component»<br/>被监控软件"]
+  end
+  subgraph build_env["«execution environment» 编译环境"]
+    gen_project["«component»<br/>生成的软件工程"]
+  end
+  web_ui -- "HTTP" --> page_svc
+  web_ui -- "HTTP" --> api_svc
+  web_ui -- "长连接" --> ws_svc
+  agent -- "采集任务、录取数据" --- api_svc
+  agent -- "UDP、组播、DDS" --- target_sw
+  api_svc --> codegen
+  api_svc --> db
+  api_svc --> files
+  gen_project -. "下载构建产物" .- files
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

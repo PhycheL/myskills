@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Model 生成与维护活动图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>Model 生成与维护活动图</h1>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  start@{ shape: sm-circ } --> pick(选择已发布的协议)
+  pick --> state{" "}
+  state -->|"[尚无 Model]"| gen(读取协议结构体<br/>按转换规则生成 Model)
+  state -->|"[来源版本已过期]"| regen(按最新发布版本重新生成<br/>保留已有调整)
+  state -->|"[来源为最新]"| merge_show{" "}
+  gen --> merge_show
+  regen --> merge_show
+  merge_show --> show(显示 Model 成员<br/>类型与来源字段)
+  show --> adjust{" "}
+  adjust -->|"[需要调整]"| edit(调整成员名称、取舍<br/>顺序与注释)
+  adjust -->|"[无需调整]"| merge_save{" "}
+  edit --> merge_save
+  merge_save --> save(校验并保存 Model)
+  save --> done@{ shape: fr-circ }
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>

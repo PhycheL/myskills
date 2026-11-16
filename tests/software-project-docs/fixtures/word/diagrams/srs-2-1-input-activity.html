@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>资料录入活动图</title>
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+<h1>资料录入活动图</h1>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  start@{ shape: sm-circ } --> fill(填写资料)
+  fill --> check{" "}
+  check -->|"[必填项不全]"| fill
+  check -->|"[校验通过]"| save(保存资料)
+  save --> done@{ shape: fr-circ }
+</pre></div>
+<script src="assets/mermaid.min.js"></script>
+<script src="assets/diagram.js"></script>
+</body>
+</html>
